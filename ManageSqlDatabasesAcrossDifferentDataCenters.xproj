@@ -7,7 +7,7 @@
 
   <Import Project="$(VSToolsPath)\DotNet\Microsoft.DotNet.Props" Condition="'$(VSToolsPath)' != ''" />
   <PropertyGroup Label="Globals">
-    <ProjectGuid>12600066-48a9-4da5-87cf-dd1417a2949e</ProjectGuid>
+    <ProjectGuid>9e9cd95e-bdff-43ca-9540-6662b829b0ca</ProjectGuid>
     <RootNamespace>ManageSqlDatabasesAcrossDifferentDataCenters</RootNamespace>
     <BaseIntermediateOutputPath Condition="'$(BaseIntermediateOutputPath)'=='' ">.\obj</BaseIntermediateOutputPath>
     <OutputPath Condition="'$(OutputPath)'=='' ">.\bin\</OutputPath>

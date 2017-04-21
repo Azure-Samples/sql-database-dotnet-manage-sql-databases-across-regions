@@ -5,9 +5,9 @@ using Microsoft.Azure.Management.Compute.Fluent;
 using Microsoft.Azure.Management.Compute.Fluent.Models;
 using Microsoft.Azure.Management.Fluent;
 using Microsoft.Azure.Management.Network.Fluent;
-using Microsoft.Azure.Management.Resource.Fluent;
-using Microsoft.Azure.Management.Resource.Fluent.Core;
-using Microsoft.Azure.Management.Resource.Fluent.Core.ResourceActions;
+using Microsoft.Azure.Management.ResourceManager.Fluent;
+using Microsoft.Azure.Management.ResourceManager.Fluent.Core;
+using Microsoft.Azure.Management.ResourceManager.Fluent.Core.ResourceActions;
 using Microsoft.Azure.Management.Samples.Common;
 using Microsoft.Azure.Management.Sql.Fluent;
 using Microsoft.Azure.Management.Sql.Fluent.Models;
@@ -127,7 +127,7 @@ namespace ManageSqlDatabasesAcrossDifferentDataCenters
                 foreach (var network in networks)
                 {
                     var vmName = Utilities.CreateRandomName(virtualMachineNamePrefix);
-                    var publicIpAddressCreatable = azure.PublicIpAddresses
+                    var publicIpAddressCreatable = azure.PublicIPAddresses
                             .Define(vmName)
                             .WithRegion(network.Region)
                             .WithExistingResourceGroup(rgName)
@@ -137,8 +137,8 @@ namespace ManageSqlDatabasesAcrossDifferentDataCenters
                             .WithExistingResourceGroup(rgName)
                             .WithExistingPrimaryNetwork(network)
                             .WithSubnet(network.Subnets.Values.First().Name)
-                            .WithPrimaryPrivateIpAddressDynamic()
-                            .WithNewPrimaryPublicIpAddress(publicIpAddressCreatable)
+                            .WithPrimaryPrivateIPAddressDynamic()
+                            .WithNewPrimaryPublicIPAddress(publicIpAddressCreatable)
                             .WithPopularWindowsImage(KnownWindowsVirtualMachineImage.WindowsServer2012R2Datacenter)
                             .WithAdminUsername(administratorLogin)
                             .WithAdminPassword(administratorPassword)
@@ -148,7 +148,7 @@ namespace ManageSqlDatabasesAcrossDifferentDataCenters
                 var virtualMachines = azure.VirtualMachines.Create(creatableVirtualMachines.ToArray());
                 foreach (var virtualMachine in virtualMachines)
                 {
-                    ipAddresses.Add(virtualMachine.Name, virtualMachine.GetPrimaryPublicIpAddress().IpAddress);
+                    ipAddresses.Add(virtualMachine.Name, virtualMachine.GetPrimaryPublicIPAddress().IPAddress);
                 }
 
                 Utilities.Log("Adding firewall rule for each of virtual network network");
@@ -162,7 +162,7 @@ namespace ManageSqlDatabasesAcrossDifferentDataCenters
                 {
                     foreach (var ipAddress in ipAddresses)
                     {
-                        sqlServer.FirewallRules.Define(ipAddress.Key).WithIpAddress(ipAddress.Value).Create();
+                        sqlServer.FirewallRules.Define(ipAddress.Key).WithIPAddress(ipAddress.Value).Create();
                     }
                 }
 
@@ -208,7 +208,7 @@ namespace ManageSqlDatabasesAcrossDifferentDataCenters
 
                 var azure = Azure
                     .Configure()
-                    .WithLogLevel(HttpLoggingDelegatingHandler.Level.BASIC)
+                    .WithLogLevel(HttpLoggingDelegatingHandler.Level.Basic)
                     .Authenticate(credentials)
                     .WithDefaultSubscription();
 
