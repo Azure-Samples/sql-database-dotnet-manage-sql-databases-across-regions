@@ -4,7 +4,7 @@ platforms: .Net
 author: anudeepsharma
 ---
 
-#Getting Started with Sql - Manage Sql Databases Across Different Data Centers - in .Net #
+# Getting Started with Sql - Manage Sql Databases Across Different Data Centers - in .Net #
 
           Azure Storage sample for managing SQL Database -
            - Create 3 SQL Servers in different region.
