@@ -1,0 +1,4 @@
+C:\Sources\dotnet-samples\sql-database-dotnet-manage-sql-databases-across-regions\bin\Debug\net452\ManageSqlDatabasesAcrossDifferentDataCenters.runtimeconfig.json
+C:\Sources\dotnet-samples\sql-database-dotnet-manage-sql-databases-across-regions\bin\Debug\net452\ManageSqlDatabasesAcrossDifferentDataCenters.runtimeconfig.dev.json
+C:\Sources\dotnet-samples\sql-database-dotnet-manage-sql-databases-across-regions\obj\Debug\net452\ManageSqlDatabasesAcrossDifferentDataCenters.csproj.ManageSqlDatabasesAcrossDifferentDataCenters.exe.config
+C:\Sources\dotnet-samples\sql-database-dotnet-manage-sql-databases-across-regions\obj\Debug\net452\ManageSqlDatabasesAcrossDifferentDataCenters.csproj.CoreCompileInputs.cache
