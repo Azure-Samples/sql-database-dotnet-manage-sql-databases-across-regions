@@ -1,2 +1,0 @@
-C:\Sources\dotnet-samples\sql-database-dotnet-manage-sql-databases-across-regions\bin\Debug\netstandard1.6\ManageSqlDatabasesAcrossDifferentDataCenters.deps.json
-C:\Sources\dotnet-samples\sql-database-dotnet-manage-sql-databases-across-regions\obj\Debug\netstandard1.6\ManageSqlDatabasesAcrossDifferentDataCenters.csproj.CoreCompileInputs.cache
