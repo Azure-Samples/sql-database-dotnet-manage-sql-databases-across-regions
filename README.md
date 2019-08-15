@@ -4,21 +4,21 @@ languages:
 - csharp
 products:
 - azure
-services: Sql
-platforms: dotnet
-author: yaohaizh
+extensions:
+- services: Sql
+- platforms: dotnet
 ---
 
 # Getting started on managing SQL databases across regions in C# #
 
-          Azure Storage sample for managing SQL Database -
-           - Create 3 SQL Servers in different region.
-           - Create a master database in master SQL Server.
-           - Create 2 more SQL Servers in different azure regions
-           - Create secondary read only databases in these server with source as database in server created in step 1.
-           - Create 5 virtual networks in different regions.
-           - Create one VM in each of the virtual network.
-           - Update all three databases to have firewall rules with range of each of the virtual network.
+ Azure Storage sample for managing SQL Database -
+  - Create 3 SQL Servers in different region.
+  - Create a master database in master SQL Server.
+  - Create 2 more SQL Servers in different azure regions
+  - Create secondary read only databases in these server with source as database in server created in step 1.
+  - Create 5 virtual networks in different regions.
+  - Create one VM in each of the virtual network.
+  - Update all three databases to have firewall rules with range of each of the virtual network.
 
 
 ## Running this Sample ##
