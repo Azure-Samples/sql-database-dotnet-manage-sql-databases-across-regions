@@ -2,11 +2,13 @@
 page_type: sample
 languages:
 - csharp
+- javascript
+- powershell
+- html
 products:
 - azure
-extensions:
-- services: Sql
-- platforms: dotnet
+description: "Getting started on managing SQL databases across regions in C#"
+urlFragment: sql-database-dotnet-manage-sql-databases-across-regions
 ---
 
 # Getting started on managing SQL databases across regions in C# #
