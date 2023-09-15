@@ -1,31 +1,27 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License. See License.txt in the project root for license information.
 
-using Microsoft.Azure.Management.Compute.Fluent;
-using Microsoft.Azure.Management.Compute.Fluent.Models;
-using Microsoft.Azure.Management.Fluent;
-using Microsoft.Azure.Management.Network.Fluent;
-using Microsoft.Azure.Management.ResourceManager.Fluent;
-using Microsoft.Azure.Management.ResourceManager.Fluent.Core;
-using Microsoft.Azure.Management.ResourceManager.Fluent.Core.ResourceActions;
-using Microsoft.Azure.Management.Samples.Common;
-using Microsoft.Azure.Management.Sql.Fluent;
-using Microsoft.Azure.Management.Sql.Fluent.Models;
+using Azure;
+using Azure.Core;
+using Azure.Identity;
+using Azure.ResourceManager.Samples.Common;
+using Azure.ResourceManager.Resources;
+using Azure.ResourceManager;
+using Azure.ResourceManager.Sql;
+using Azure.ResourceManager.Sql.Models;
+using Azure.ResourceManager.Network;
+using Azure.ResourceManager.Network.Models;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net.Http.Headers;
+using Azure.ResourceManager.Compute;
 
 namespace ManageSqlDatabasesAcrossDifferentDataCenters
 {
     public class Program
     {
-        private static readonly string administratorLogin = "sqladmin3423";
-        private static readonly string administratorPassword = Utilities.CreatePassword();
-        private static readonly string slaveSqlServer1Name = "slave1sql";
-        private static readonly string slaveSqlServer2Name = "slave2sql";
-        private static readonly string databaseName = "mydatabase";
-        private static readonly string networkNamePrefix = "network";
-        private static readonly string virtualMachineNamePrefix = "samplevm";
+        private static ResourceIdentifier? _resourceGroupId = null;
 
         /**
          * Azure Storage sample for managing SQL Database -
@@ -37,143 +33,179 @@ namespace ManageSqlDatabasesAcrossDifferentDataCenters
          *  - Create one VM in each of the virtual network.
          *  - Update all three databases to have firewall rules with range of each of the virtual network.
          */
-        public static void RunSample(IAzure azure)
+        public static async Task RunSample(ArmClient client)
         {
-            string sqlServerName = SdkContext.RandomResourceName("sqlserver", 20);
-            string rgName = SdkContext.RandomResourceName("rgRSSDRE", 20);
             
             try
             {
+                //Get default subscription
+                SubscriptionResource subscription = await client.GetDefaultSubscriptionAsync();
+
+                //Create a resource group in the EastUS region
+                string rgName = Utilities.CreateRandomName("rgSQLServer");
+                Utilities.Log("Creating resource group...");
+                var rgLro = await subscription.GetResourceGroups().CreateOrUpdateAsync(WaitUntil.Completed, rgName, new ResourceGroupData(AzureLocation.EastUS));
+                ResourceGroupResource resourceGroup = rgLro.Value;
+                _resourceGroupId = resourceGroup.Id;
+                Utilities.Log($"Created a resource group with name: {resourceGroup.Data.Name} ");
+
                 // ============================================================
                 // Create a SQL Server, with 2 firewall rules.
 
-                var masterSqlServer = azure.SqlServers.Define(sqlServerName)
-                        .WithRegion(Region.USEast)
-                        .WithNewResourceGroup(rgName)
-                        .WithAdministratorLogin(administratorLogin)
-                        .WithAdministratorPassword(administratorPassword)
-                        .Create();
+                Utilities.Log("Creating a SQL Server with 2 firewall rules");
+                string masterSqlServerName = Utilities.CreateRandomName("sqlserver-regiontest");
+                Utilities.Log("Creating SQL Server...");
+                string administratorLogin = "sqladmintest";
+                string administratorPassword = Utilities.CreatePassword();
+                SqlServerData sqlData = new SqlServerData(AzureLocation.EastUS)
+                {
+                    AdministratorLogin = administratorLogin,
+                    AdministratorLoginPassword = administratorPassword
+                };
+                var masterSqlServer = (await resourceGroup.GetSqlServers().CreateOrUpdateAsync(WaitUntil.Completed, masterSqlServerName, sqlData)).Value;
+                Utilities.Log($"Created a SQL Server with name: {masterSqlServer.Data.Name} ");
 
-                Utilities.PrintSqlServer(masterSqlServer);
+                string FirewallRule1stName = Utilities.CreateRandomName("firewallrule1st-");
+                Utilities.Log("Creating 2 firewall rules...");
+                SqlFirewallRuleData FirewallRule1stData = new SqlFirewallRuleData()
+                {
+                    StartIPAddress = "10.2.0.1",
+                    EndIPAddress = "10.2.0.10"
+                };
+                var FirewallRule1stLro = await masterSqlServer.GetSqlFirewallRules().CreateOrUpdateAsync(WaitUntil.Completed, FirewallRule1stName, FirewallRule1stData);
+                SqlFirewallRuleResource FirewallRule1st = FirewallRule1stLro.Value;
+                Utilities.Log($"Created first firewall rule with name {FirewallRule1st.Data.Name}");
+
+                string FirewallRule2ndName = Utilities.CreateRandomName("firewallrule2nd-");
+                SqlFirewallRuleData FirewallRule2ndData = new SqlFirewallRuleData()
+                {
+                    StartIPAddress = "10.0.0.1",
+                    EndIPAddress = "10.0.0.10"
+                };
+                var FirewallRule2ndLro = await masterSqlServer.GetSqlFirewallRules().CreateOrUpdateAsync(WaitUntil.Completed, FirewallRule2ndName, FirewallRule2ndData);
+                SqlFirewallRuleResource FirewallRule2nd = FirewallRule2ndLro.Value;
+                Utilities.Log($"Created second firewall rule with name {FirewallRule2nd.Data.Name}");
 
                 // ============================================================
                 // Create a Database in master SQL server created above.
-                Utilities.Log("Creating a database");
-
-                var masterDatabase = masterSqlServer.Databases.Define(databaseName)
-                        .WithEdition(DatabaseEdition.Basic)
-                        .Create();
-                Utilities.PrintDatabase(masterDatabase);
+                Utilities.Log("Creating a database...");
+                string databaseName = Utilities.CreateRandomName("mydatabase");
+                var masterDatabaseData = new SqlDatabaseData(AzureLocation.EastUS)
+                {
+                    Sku = new SqlSku("Basic"),
+                };
+                var masterDatabase = (await masterSqlServer.GetSqlDatabases().CreateOrUpdateAsync(WaitUntil.Completed, databaseName, masterDatabaseData)).Value;
+                Utilities.Log($"Created a database with name: {masterDatabase.Data.Name}");
 
                 // Create secondary databases for the master database
-                var sqlServerInSecondaryLocation = azure.SqlServers
-                        .Define(Utilities.CreateRandomName(slaveSqlServer1Name))
-                        .WithRegion(masterDatabase.DefaultSecondaryLocation)
-                        .WithExistingResourceGroup(rgName)
-                        .WithAdministratorLogin(administratorLogin)
-                        .WithAdministratorPassword(administratorPassword)
-                        .Create();
-                Utilities.PrintSqlServer(sqlServerInSecondaryLocation);
+                Utilities.Log("Creating a slave SQL Server ...");  //Location 'West US' is not accepting creation of new Windows Azure SQL Database servers at this time.
+                string slaveSqlServer1Name = Utilities.CreateRandomName("slave1sql");
+                var sqlServerInSecondaryLocationData = new SqlServerData(AzureLocation.SouthCentralUS)
+                {
+                    AdministratorLogin = administratorLogin,
+                    AdministratorLoginPassword = administratorPassword
+                };
+                var sqlServerInSecondaryLocation = (await resourceGroup.GetSqlServers().CreateOrUpdateAsync(WaitUntil.Completed, slaveSqlServer1Name, sqlServerInSecondaryLocationData)).Value;
+                Utilities.Log($"Created a slave SQL Server with name {sqlServerInSecondaryLocation.Data.Name}");
 
-                Utilities.Log("Creating database in slave SQL Server.");
-                var secondaryDatabase = sqlServerInSecondaryLocation.Databases.Define(databaseName)
-                        .WithSourceDatabase(masterDatabase)
-                        .WithMode(CreateMode.OnlineSecondary)
-                        .Create();
-                Utilities.PrintDatabase(secondaryDatabase);
+                Utilities.Log("Creating database in slave SQL Server...");
+                var secondaryDatabaseData = new SqlDatabaseData(sqlServerInSecondaryLocation.Data.Location) // Secondary: creates a database as a secondary replica of an existing database. sourceDatabaseId must be specified as the resource ID of the existing primary database.
+                {
+                    CreateMode = SqlDatabaseCreateMode.Secondary,
+                    SourceDatabaseId = masterDatabase.Id
+                };
+                var secondaryDatabase = (await sqlServerInSecondaryLocation.GetSqlDatabases().CreateOrUpdateAsync(WaitUntil.Completed, databaseName, secondaryDatabaseData)).Value;
+                Utilities.Log($"Created database in slave SQL Server with name: {secondaryDatabase.Data.Name}");
 
-                var sqlServerInEurope = azure.SqlServers
-                        .Define(Utilities.CreateRandomName(slaveSqlServer2Name))
-                        .WithRegion(Region.EuropeWest)
-                        .WithExistingResourceGroup(rgName)
-                        .WithAdministratorLogin(administratorLogin)
-                        .WithAdministratorPassword(administratorPassword)
-                        .Create();
-                Utilities.PrintSqlServer(sqlServerInEurope);
+                Utilities.Log("Creating a second slave SQL Server for the Western Europe region...");
+                string slaveSqlServer2Name = Utilities.CreateRandomName("slave2sql");
+                var sqlServerInEuropeData = new SqlServerData(AzureLocation.WestEurope)
+                {
+                    AdministratorLogin = administratorLogin,
+                    AdministratorLoginPassword = administratorPassword
+                };
+                var sqlServerInEurope = (await resourceGroup.GetSqlServers().CreateOrUpdateAsync(WaitUntil.Completed, slaveSqlServer2Name, sqlServerInEuropeData)).Value;
+                Utilities.Log($"Created a second slave SQL Server for the Western Europe region with SQL Server name: {sqlServerInEurope.Data.Name}");
 
-                Utilities.Log("Creating database in second slave SQL Server.");
-                var secondaryDatabaseInEurope = sqlServerInEurope.Databases.Define(databaseName)
-                        .WithSourceDatabase(masterDatabase)
-                        .WithMode(CreateMode.OnlineSecondary)
-                        .Create();
-                Utilities.PrintDatabase(secondaryDatabaseInEurope);
+                Utilities.Log("Creating database in second slave SQL Server...");
+                var secondaryDatabaseInEuropeData = new SqlDatabaseData(sqlServerInEurope.Data.Location)
+                {
+                    CreateMode = SqlDatabaseCreateMode.Secondary,
+                    SourceDatabaseId = masterDatabase.Id
+                };
+                var secondaryDatabaseInEurope = (await sqlServerInEurope.GetSqlDatabases().CreateOrUpdateAsync(WaitUntil.Completed, databaseName, secondaryDatabaseInEuropeData)).Value;
+                Utilities.Log($"Created database in second slave SQL Server with name {secondaryDatabaseInEurope.Data.Name}");
 
                 // ============================================================
                 // Create Virtual Networks in different regions
-                var regions = new List<Region>();
-
-                regions.Add(Region.USEast);
-                regions.Add(Region.USWest);
-                regions.Add(Region.EuropeNorth);
-                regions.Add(Region.AsiaSouthEast);
-                regions.Add(Region.JapanEast);
-
-                var creatableNetworks = new List<ICreatable<INetwork>>();
-
-                Utilities.Log("Creating virtual networks in different regions.");
-
-                foreach (Region region in regions)
+                var regions = new List<AzureLocation>()
                 {
-                    creatableNetworks.Add(azure.Networks.Define(Utilities.CreateRandomName(networkNamePrefix))
-                            .WithRegion(region)
-                            .WithExistingResourceGroup(rgName));
+                    AzureLocation.EastUS,AzureLocation.WestUS,AzureLocation.NorthEurope,AzureLocation.SoutheastAsia,AzureLocation.JapanEast
+                };
+
+                var creatableNetworks = new List<VirtualNetworkResource>();
+
+                Utilities.Log("Creating virtual networks in different regions...");
+
+                string networkNamePrefix = "network";
+                foreach (var region in regions)
+                {
+                    creatableNetworks.Add(await Utilities.CreateVirtualNetwork(resourceGroup,region,networkNamePrefix));
                 }
-                var networks = azure.Networks.Create(creatableNetworks.ToArray());
+                var networks = creatableNetworks.ToArray();
+                Utilities.Log("Created virtual networks in different regions.");
 
                 // ============================================================
                 // Create virtual machines attached to different virtual networks created above.
-                var creatableVirtualMachines = new List<ICreatable<IVirtualMachine>>();
-
+                Utilities.Log("Creating virtual machines attached to different virtual networks created above...");
+                var creatableVirtualMachines = new List<VirtualMachineResource>();
+                string virtualMachineNamePrefix = "samplevm";
                 foreach (var network in networks)
                 {
                     var vmName = Utilities.CreateRandomName(virtualMachineNamePrefix);
-                    var publicIpAddressCreatable = azure.PublicIPAddresses
-                            .Define(vmName)
-                            .WithRegion(network.Region)
-                            .WithExistingResourceGroup(rgName)
-                            .WithLeafDomainLabel(vmName);
-                    creatableVirtualMachines.Add(azure.VirtualMachines.Define(vmName)
-                            .WithRegion(network.Region)
-                            .WithExistingResourceGroup(rgName)
-                            .WithExistingPrimaryNetwork(network)
-                            .WithSubnet(network.Subnets.Values.First().Name)
-                            .WithPrimaryPrivateIPAddressDynamic()
-                            .WithNewPrimaryPublicIPAddress(publicIpAddressCreatable)
-                            .WithPopularWindowsImage(KnownWindowsVirtualMachineImage.WindowsServer2012R2Datacenter)
-                            .WithAdminUsername(administratorLogin)
-                            .WithAdminPassword(administratorPassword)
-                            .WithSize(VirtualMachineSizeTypes.Parse("Standard_D2a_v4")));
+                    string publicIPName = vmName;
+                    var publicIpAddressCreatable = await Utilities.CreateVirtualNetworkInterface(resourceGroup, network, publicIPName);
+                    creatableVirtualMachines.Add(await Utilities.CreateVirtualMachine(resourceGroup, publicIpAddressCreatable, vmName, administratorLogin, administratorPassword));
+                    Utilities.Log($"Created virtual machines in {publicIpAddressCreatable.Data.Location} with name {vmName}");
                 }
                 var ipAddresses = new Dictionary<string, string>();
-                var virtualMachines = azure.VirtualMachines.Create(creatableVirtualMachines.ToArray());
+                var virtualMachines = creatableVirtualMachines.ToArray();
                 foreach (var virtualMachine in virtualMachines)
                 {
-                    ipAddresses.Add(virtualMachine.Name, virtualMachine.GetPrimaryPublicIPAddress().IPAddress);
+                    var result =(await resourceGroup.GetPublicIPAddressAsync(virtualMachine.Data.Name)).Value;
+                    var IPAddress = result.Data.IPAddress;
+                    ipAddresses.Add(virtualMachine.Data.Name, IPAddress);
                 }
 
-                Utilities.Log("Adding firewall rule for each of virtual network network");
+                Utilities.Log("Adding firewall rule for each of virtual network network...");
 
-                var sqlServers = new List<ISqlServer>();
-                sqlServers.Add(sqlServerInSecondaryLocation);
-                sqlServers.Add(sqlServerInEurope);
-                sqlServers.Add(masterSqlServer);
+                var sqlServers = new List<SqlServerResource>()
+                {
+                    sqlServerInSecondaryLocation,sqlServerInEurope,masterSqlServer
+                };
 
                 foreach (var sqlServer in sqlServers)
                 {
                     foreach (var ipAddress in ipAddresses)
                     {
-                        sqlServer.FirewallRules.Define(ipAddress.Key).WithIPAddress(ipAddress.Value).Create();
+                        var addFirewallRulesName = ipAddress.Key;
+                        var addFirewallRulesData = new SqlFirewallRuleData()
+                        {
+                            StartIPAddress = ipAddress.Value,
+                            EndIPAddress = ipAddress.Value
+                        };
+                        await sqlServer.GetSqlFirewallRules().CreateOrUpdateAsync(WaitUntil.Completed,addFirewallRulesName, addFirewallRulesData);
                     }
                 }
 
                 foreach (var sqlServer in sqlServers)
                 {
-                    Utilities.Log("Print firewall rules in Sql Server in " + sqlServer.RegionName);
+                    Utilities.Log("Print firewall rules in Sql Server in " + sqlServer.Data.Location);
 
-                    var firewallRules = sqlServer.FirewallRules.List();
+                    var firewallRules = sqlServer.GetSqlFirewallRules().ToList();
                     foreach (var firewallRule in firewallRules)
                     {
-                        Utilities.PrintFirewallRule(firewallRule);
+                        Utilities.Log($"Print firewall rules in {sqlServer.Data.Location} with firewall rules name {firewallRule.Data.Name}");
                     }
                 }
 
@@ -181,45 +213,44 @@ namespace ManageSqlDatabasesAcrossDifferentDataCenters
                 Utilities.Log("Deleting all Sql Servers");
                 foreach (var sqlServer in sqlServers)
                 {
-                    azure.SqlServers.DeleteById(sqlServer.Id);
+                    await sqlServer.DeleteAsync(WaitUntil.Completed);
                 }
             }
             finally
             {
                 try
                 {
-                    Utilities.Log("Deleting Resource Group: " + rgName);
-                    azure.ResourceGroups.DeleteByName(rgName);
-                    Utilities.Log("Deleted Resource Group: " + rgName);
+                    if (_resourceGroupId is not null)
+                    {
+                        Utilities.Log($"Deleting Resource Group...");
+                        await client.GetResourceGroupResource(_resourceGroupId).DeleteAsync(WaitUntil.Completed);
+                        Utilities.Log($"Deleted Resource Group: {_resourceGroupId.Name}");
+                    }
                 }
-                catch
+                catch (Exception e)
                 {
-                    Utilities.Log("Did not create any resources in Azure. No clean up is necessary");
+                    Utilities.Log(e);
                 }
             }
         }
-        public static void Main(string[] args)
+        public static async Task Main(string[] args)
         {
             try
             {
                 //=================================================================
                 // Authenticate
-                var credentials = SdkContext.AzureCredentialsFactory.FromFile(Environment.GetEnvironmentVariable("AZURE_AUTH_LOCATION"));
+                var clientId = Environment.GetEnvironmentVariable("CLIENT_ID");
+                var clientSecret = Environment.GetEnvironmentVariable("CLIENT_SECRET");
+                var tenantId = Environment.GetEnvironmentVariable("TENANT_ID");
+                var subscription = Environment.GetEnvironmentVariable("SUBSCRIPTION_ID");
+                ClientSecretCredential credential = new ClientSecretCredential(tenantId, clientId, clientSecret);
+                ArmClient client = new ArmClient(credential, subscription);
 
-                var azure = Azure
-                    .Configure()
-                    .WithLogLevel(HttpLoggingDelegatingHandler.Level.Basic)
-                    .Authenticate(credentials)
-                    .WithDefaultSubscription();
-
-                // Print selected subscription
-                Utilities.Log("Selected subscription: " + azure.SubscriptionId);
-
-                RunSample(azure);
+                await RunSample(client);
             }
             catch (Exception e)
             {
-                Utilities.Log(e);
+                Utilities.Log(e.ToString());
             }
         }
     }
